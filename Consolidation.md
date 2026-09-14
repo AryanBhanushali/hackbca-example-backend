@@ -1,6 +1,6 @@
 ---
 name: consolidate-design-docs
-description: Merges the already-generated HLD and LLD documents from each component repo of a project (e.g. frontend and backend) into a single unified HLD and LLD for an Enterprise Architect audience. Discovers component repos at runtime, is runner-agnostic, and is resume-safe. Does not re-analyze source code.
+description: Merges the already-generated HLD and LLD documents from each component repo of a project (e.g. frontend and backend) into a single unified HLD and LLD for an Enterprise Architect audience. Discovers component repos at runtime and is runner-agnostic. Does not re-analyze source code.
 ---
 
 # Consolidate Design Documents
@@ -11,9 +11,8 @@ and you are not regenerating anything from scratch.
 
 This skill is reused across many projects, so it never assumes specific repo
 folder names, and it runs in different agents. It discovers the component repos at
-runtime and builds output incrementally so it never hangs on large documents. Its
-output uses the same section taxonomy as the generate-design-docs skill, so a
-consolidated doc has a section for every section that skill produces.
+runtime. Its output uses the same section taxonomy as the generate-design-docs
+skill, so a consolidated doc has a section for every section that skill produces.
 
 ## Execution Protocol (runner-agnostic — read this FIRST)
 
@@ -22,43 +21,24 @@ github.com, or Copilot in VS Code). Do not assume any specific tool name — use
 whatever file-read, file-create, file-edit, directory-list, branch, and
 pull-request capabilities the current runner provides.
 
-**Build every document incrementally. Never generate a whole document in a single
-step before taking an action.** Composing a long document entirely in one
-generation and writing it only at the end is the main cause of the agent hanging
-on large documents (the consolidated LLD especially). Apply this identically to
-BOTH the consolidated HLD and the consolidated LLD:
+**Write each document as a whole, in a single file operation — one write for the
+consolidated HLD, one write for the consolidated LLD.** Compose the complete
+document (all sections, in the order given below) and then write the entire file at
+once. Do NOT split a document into many per-section writes.
 
-1. **Create the output file EARLY.** The moment you begin a document, write it to
-   disk containing only its Title & Metadata section and the next section — do not
-   wait until the whole document is composed.
-2. **Then add one section at a time, in the fixed section order below**, each as a
-   separate edit/append. Write each section to disk as soon as it is composed, then
-   move straight on to the next — never hold a whole document in the buffer.
-3. **One section per write.** Small adjacent sections may be combined; never batch
-   the whole document into one write.
+**Run straight through — do not wait for the user.** Produce the complete
+consolidated HLD and write it, then produce the complete consolidated LLD and write
+it, then continue to the change check and PR — all in one run. Do not stop, hand
+back to the user, or ask them to say "next"/"continue"/"yes" between the two
+documents or at any other point. If the runner shows a file-write approval prompt,
+that is the runner's own behavior (outside your control); as soon as it is
+approved, continue to the next step without waiting to be told. If your runner can
+stage both file writes in a single confirmation, you may write both together.
 
-**Run continuously — do not wait for the user between sections.** Proceed
-automatically from each section to the next, and from the consolidated HLD to the
-consolidated LLD, through to the run's end state (a pull request opened, or the
-no-change stop). Writing a section to disk is NOT a stopping point: after each
-write, continue to the next section in the same run. Never end your turn with only
-a statement of what you are about to do — if you say you will add a section, add it
-in that same turn. Do not ask the user to say "next", "continue", or "yes" to
-proceed, and do not pause for confirmation between sections. The only unavoidable
-pauses are the runner's own file-write approval prompts, which you cannot control;
-as soon as one is approved, continue straight to the next section without waiting
-to be told.
-
-**Be idempotent and resume-safe.** Before writing a section, if its `##` heading
-already exists in the file, replace that section in place; otherwise add it. Every
-run rewrites every section from the current inputs, so re-running is always safe
-and always reflects the latest source docs. (This is the "regenerate fully each
-run" rule in Hard Rule 4, applied section by section.) If you are re-invoked after
-an interruption, do NOT restart from scratch: first read the current state (which
-output files exist, which sections each already contains, and whether the
-branch/PR exist), then continue from the first incomplete piece. Re-writing a
-section that already exists is safe, but do not create a second branch or a
-duplicate PR if one already exists.
+**Resume safely.** If re-invoked after an interruption, do not restart blindly:
+read current state (do the consolidated files already exist and look complete? do
+the branch/PR exist?) and continue from the first incomplete artifact. Do not
+create a second branch or a duplicate PR if one already exists.
 
 ## Step 0 — Locate the component docs (do this FIRST, exactly once)
 
@@ -116,11 +96,10 @@ docs.)
 3. **Preserve accuracy.** Only reorganize, merge, and de-duplicate — do not alter
    or reinterpret factual claims.
 4. **Regenerate fully each run — do not attempt incremental diffing of source.**
-   Produce both consolidated documents in full from the current inputs each run,
-   rewriting each section in place (see Execution Protocol). Do NOT try to compute
-   "what changed since last consolidation" — that comparison is a common cause of
-   spinning. The runner's diff/status detects whether the regenerated output
-   differs from what's committed (see Process).
+   Produce both consolidated documents in full from the current inputs each run.
+   Do NOT try to compute "what changed since last consolidation" — that comparison
+   is a common cause of spinning. The runner's diff/status detects whether the
+   regenerated output differs from what's committed (see Process).
 5. **Validate merged Mermaid diagrams** using the rules below — a diagram valid in
    each source doc can still break after merging.
 
@@ -155,7 +134,7 @@ components, use each component's role or folder-name label. Read
 "frontend"/"backend" below as "client-side component(s)"/"server-side
 component(s)."
 
-### HLD merge (`docs/HLD_consolidated.md`) — fixed section order
+### HLD merge (`docs/HLD_consolidated.md`)
 1. Title & Metadata — project name, last updated date, doc owner; list the
    component repos merged and their last-updated dates.
 2. Executive Overview — one overview of the whole system (all components).
@@ -181,7 +160,7 @@ component(s)."
 14. Change Log — entry noting this consolidation run and which component docs
     (with dates if present) were used.
 
-### LLD merge (`docs/LLD_consolidated.md`) — fixed section order
+### LLD merge (`docs/LLD_consolidated.md`)
 1. Title & Metadata.
 2. Module/Component Breakdown — one top-level group per component, with a
    "Cross-Cutting" note where one component's module depends on another's.
@@ -190,8 +169,7 @@ component(s)."
 4. Data Models / Schemas — one section; flag where types/schemas in different
    components represent the same entity.
 5. Sequence Diagrams — prefer merged end-to-end diagrams for cross-component
-   workflows over separate per-component ones; write each diagram as its own
-   append.
+   workflows over separate per-component ones.
 6. Error Handling & Retry Behavior — merged, per-component attribution where
    useful.
 7. Configuration & Environment-Specific Behavior — merged.
@@ -200,23 +178,18 @@ component(s)."
 
 ## Process
 
-Do these steps in order, in a single continuous run. They are ordered
-dependencies, not pause points — do not stop for user input between them (see the
-Execution Protocol's "run continuously" rule).
+Run these steps straight through, without pausing for user input between them.
 
 1. **Discover** the component repos (Step 0), once. Fewer than two → STOP and
    report. Otherwise continue.
 2. **Read** each component's `docs/HLD.md` and `docs/LLD.md` in full, once, and
    determine each component's role.
-3. **Build the consolidated HLD** at `docs/HLD_consolidated.md`: create the file
-   after its Title & Metadata section, then add each following section in the
-   fixed order (validating Mermaid as you go), replacing any section already
-   present. Confirm the file exists.
-4. **Build the consolidated LLD** at `docs/LLD_consolidated.md`, only after step 3
-   — same incremental, section-by-section approach. Do not generate the whole LLD
-   before the first write. Confirm the file exists.
-5. **Detect changes** using the runner's diff/status capability. If neither
-   output file differs from what's committed, STOP — no branch or PR.
+3. **Compose the complete consolidated HLD** (all sections in order, validating
+   Mermaid) and write `docs/HLD_consolidated.md` in one operation.
+4. **Compose the complete consolidated LLD** the same way and write
+   `docs/LLD_consolidated.md` in one operation.
+5. **Detect changes** using the runner's diff/status capability. If neither output
+   file differs from what's committed, STOP — no branch or PR.
 6. **Branch**: `docs/consolidated-update-<YYYYMMDD-HHMM>` off the default branch.
 7. **Commit** both files: `docs: automated consolidated HLD/LLD update <date>`.
 8. **Open the PR** against the default branch, titled
@@ -224,7 +197,6 @@ Execution Protocol's "run continuously" rule).
    noting which component docs (with dates) were used. Never push directly to the
    default branch.
 
-If re-invoked after an interruption, read current state (which files/sections
-exist, whether the branch exists, whether a PR exists) and resume from the first
-incomplete step above. Re-writing an already-present section is safe; do not
-create a second branch or a duplicate PR if one already exists.
+If re-invoked after an interruption, read current state and resume from the first
+incomplete step — do not redo a completed file, and do not create a second branch
+or a duplicate PR.
