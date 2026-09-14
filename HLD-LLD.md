@@ -1,6 +1,6 @@
 ---
 name: generate-design-docs
-description: Analyzes this repository and generates/updates a High-Level Design (HLD) document and a Low-Level Design (LLD) document under docs/, written for an Enterprise Architect audience with a strong focus on security and data provenance. Runner-agnostic and resume-safe.
+description: Analyzes this repository and generates/updates a High-Level Design (HLD) document and a Low-Level Design (LLD) document under docs/, written for an Enterprise Architect audience with a strong focus on security and data provenance. Runner-agnostic.
 ---
 
 # Generate Design Documents (HLD + LLD)
@@ -23,41 +23,24 @@ github.com, or Copilot in VS Code). Do not assume any specific tool name — use
 whatever file-read, file-create, file-edit, directory-list, branch, and
 pull-request capabilities the current runner provides.
 
-**Build every document incrementally. Never generate a whole document in a single
-step before taking an action.** Composing a long document entirely in one
-generation and writing it only at the end is the main cause of the agent hanging
-on large documents (the LLD especially). Apply this identically to BOTH the HLD
-and the LLD:
+**Write each document as a whole, in a single file operation — one write for the
+HLD, one write for the LLD.** Compose the complete document (all applicable
+sections, in the order given below) and then write the entire file at once. Do NOT
+split a document into many per-section writes.
 
-1. **Create the output file EARLY.** The moment you begin a document, write it to
-   disk containing only its Title & Metadata section and the next section — do not
-   wait until the whole document is composed.
-2. **Then add one section at a time, in the fixed section order below**, each as a
-   separate edit/append. Write each section to disk as soon as it is composed, then
-   move straight on to the next — never hold a whole document in the buffer.
-3. **One section per write.** Small adjacent sections may be combined; never batch
-   the whole document into one write.
+**Run straight through — do not wait for the user.** Produce the complete HLD and
+write it, then produce the complete LLD and write it, then continue to the change
+check and PR — all in one run. Do not stop, hand back to the user, or ask them to
+say "next"/"continue"/"yes" between the two documents or at any other point. If
+the runner shows a file-write approval prompt, that is the runner's own behavior
+(outside your control); as soon as it is approved, continue to the next step
+without waiting to be told. If your runner can stage both file writes in a single
+confirmation, you may write both documents together.
 
-**Run continuously — do not wait for the user between sections.** Proceed
-automatically from each section to the next, and from the HLD to the LLD, through
-to the run's end state (a pull request opened, or the no-change stop). Writing a
-section to disk is NOT a stopping point: after each write, continue to the next
-section in the same run. Never end your turn with only a statement of what you are
-about to do — if you say you will add a section, add it in that same turn. Do not
-ask the user to say "next", "continue", or "yes" to proceed, and do not pause for
-confirmation between sections. The only unavoidable pauses are the runner's own
-file-write approval prompts, which you cannot control; as soon as one is approved,
-continue straight to the next section without waiting to be told.
-
-**Be idempotent and resume-safe.** Before writing a section, check whether its
-`##` heading already exists in the file: if it exists and its subject is
-unchanged, skip it; if it exists but the subject changed, replace it in place; if
-it is absent, add it. (This is the "update, don't rewrite" rule in Hard Rule 2,
-applied section by section.) If you are re-invoked after an interruption, do NOT
-restart from scratch: first read the current state (which of `docs/HLD.md` /
-`docs/LLD.md` exist, which sections each already contains, and whether the
-branch/PR exist), then continue from the first incomplete piece. Do not create a
-second branch or a duplicate PR if one already exists.
+**Resume safely.** If re-invoked after an interruption, do not restart blindly:
+read current state (do `docs/HLD.md` and `docs/LLD.md` already exist and look
+complete? do the branch/PR exist?) and continue from the first incomplete
+artifact. Do not create a second branch or a duplicate PR if one already exists.
 
 ## Audience
 
@@ -77,11 +60,10 @@ tables over long paragraphs. No marketing language.
    code, config files, README, IaC, or CI files in this repository. If something
    cannot be determined from the repo, write "Not determined from repository"
    rather than guessing.
-2. **Update, don't rewrite.** If a document already exists, only change the
-   sections whose underlying subject matter has actually changed since the last
-   version (replace that section in place). Leave unaffected sections untouched.
-   If a document does not exist yet, generate it in full (bootstrap mode), still
-   section by section per the Execution Protocol.
+2. **Update, don't rewrite.** If a document already exists, carry forward the
+   existing text of sections whose subject matter hasn't changed, and only rewrite
+   the sections that actually changed — then write the whole file. This keeps
+   diffs small. If a document does not exist yet, generate it in full.
 3. **Never commit secrets.** If you encounter what looks like a real credential
    or key, redact it in the doc (e.g. `[REDACTED]`) and add a note under Security
    flagging it for manual review. Do not reproduce it.
@@ -175,12 +157,11 @@ sequenceDiagram
     deactivate API
 ```
 
-## HLD Structure (`docs/HLD.md`) — fixed section order
+## HLD Structure (`docs/HLD.md`)
 
-Write these sections one at a time in this fixed order per the Execution Protocol:
-create the file after its Title & Metadata section, then add each following
-section as its own write. Add sections the repo clearly warrants and omit those
-that don't apply; note any additions/removals at the top of the Change Log.
+Compose the complete document with these sections, in this order. Add sections the
+repo clearly warrants and omit those that don't apply; note any additions/removals
+at the top of the Change Log.
 
 1. Title & Metadata (repo name, last updated date, doc owner)
 2. Executive Overview
@@ -202,11 +183,9 @@ that don't apply; note any additions/removals at the top of the Change Log.
     values)
 14. Change Log (append a dated entry each update)
 
-## LLD Structure (`docs/LLD.md`) — fixed section order
+## LLD Structure (`docs/LLD.md`)
 
-Same procedure as the HLD, and it matters most here because this document is
-usually the largest: create the file after its Title & Metadata section, then add
-each following section as its own write.
+Compose the complete document with these sections, in this order.
 
 1. Title & Metadata
 2. Module/Component Breakdown (one subsection per major module: responsibility
@@ -215,7 +194,7 @@ each following section as its own write.
    inputs/outputs, important side effects)
 4. Data Models / Schemas (field names and types where determinable)
 5. Sequence Diagrams for the 1–3 most important workflows (Mermaid
-   `sequenceDiagram`) — write each diagram as its own append
+   `sequenceDiagram`)
 6. Error Handling & Retry Behavior
 7. Configuration & Environment-Specific Behavior
 8. Known Limitations / Technical Debt (only if evident — do not speculate)
@@ -223,27 +202,21 @@ each following section as its own write.
 
 ## Process
 
-Do these steps in order, in a single continuous run. They are ordered
-dependencies, not pause points — do not stop for user input between them (see the
-Execution Protocol's "run continuously" rule).
+Run these steps straight through, without pausing for user input between them.
 
 1. Read `docs/HLD.md` and `docs/LLD.md` if they exist (including Change Logs) to
-   learn what was last documented and which sections already exist.
+   learn what was last documented.
 2. Inventory the repository ONCE: file tree, README, dependency manifests,
    Dockerfiles, CI configs, IaC, and `.env.example`/similar. One pass — note
    anything undetermined as "Not determined from repository" and move on.
 3. Identify what is new, changed, or removed relative to the current docs.
-4. **Build `docs/HLD.md`** section by section in the fixed order: create the file
-   after its Title & Metadata section, then add each subsequent section as its own
-   write, validating Mermaid as you go. Per the Execution Protocol, skip unchanged
-   sections and replace changed ones in place. Confirm the file exists.
-5. **Build `docs/LLD.md`** the same way, only after the HLD file exists. Do not
-   generate the whole LLD before the first write — create it early and add each
-   section as its own write. Confirm the file exists.
-6. Append a dated Change Log entry in each document summarizing what changed.
-7. If neither file differs from what's committed (check via the runner's diff/
+4. **Compose the complete `docs/HLD.md`** (all applicable sections in order,
+   including a dated Change Log entry) and write the whole file in one operation.
+5. **Compose the complete `docs/LLD.md`** the same way and write the whole file in
+   one operation.
+6. If neither file differs from what's committed (check via the runner's diff/
    status capability), STOP — do not create a branch or PR.
-8. If either changed, open ONE pull request containing both:
+7. If either changed, open ONE pull request containing both:
    - Branch `docs/auto-hld-<YYYYMMDD-HHMM>` off the default branch.
    - Commit both files: `docs: automated HLD/LLD update <date>`.
    - Open a PR against the default branch, titled
@@ -251,7 +224,6 @@ Execution Protocol's "run continuously" rule).
      what changed in each document.
    - Never push directly to the default branch.
 
-If re-invoked after an interruption, read current state (which files/sections
-exist, whether the branch exists, whether a PR exists) and resume from the first
-incomplete step above — do not redo completed sections or files, and do not
-create a second branch or a duplicate PR.
+If re-invoked after an interruption, read current state and resume from the first
+incomplete step — do not redo a completed file, and do not create a second branch
+or a duplicate PR.
